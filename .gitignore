@@ -361,3 +361,14 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Local Vault & Security Files
+*.db
+*.db-wal
+*.db-shm
+*.salt
+
+# Local Vault & Security Files
+*.db
+*.db-wal
+*.db-shm
+*.salt
