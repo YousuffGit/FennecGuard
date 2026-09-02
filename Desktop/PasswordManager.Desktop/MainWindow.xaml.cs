@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Data.Sqlite;
 using PasswordManager.Desktop.Models;
 using PasswordManager.Desktop.Services;
@@ -21,6 +22,9 @@ public partial class MainWindow : FluentWindow
     private readonly string _saltFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.salt");
     private readonly string _dbFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.db");
 
+    private static readonly SolidColorBrush SuccessBrush = new(Color.FromRgb(16, 124, 65));
+    private static readonly SolidColorBrush ErrorBrush = new(Color.FromRgb(209, 52, 56));
+
     public MainWindow()
     {
         InitializeComponent();
@@ -33,7 +37,6 @@ public partial class MainWindow : FluentWindow
         ConfigureViewState();
     }
 
-    // Configures the window layout and position based on whether the vault is locked
     private void ConfigureViewState()
     {
         bool isFirstRun = !File.Exists(_dbFilePath) || !File.Exists(_saltFilePath);
@@ -42,7 +45,6 @@ public partial class MainWindow : FluentWindow
 
         if (isFirstRun)
         {
-            // Center the setup window on screen
             Width = 520;
             Height = 520;
             Left = workArea.Left + (workArea.Width - Width) / 2;
@@ -53,9 +55,8 @@ public partial class MainWindow : FluentWindow
         }
         else
         {
-            // Position as a compact popup in the bottom-right corner
             Width = 340;
-            Height = 260;
+            Height = 280;
             Left = workArea.Right - Width - 24;
             Top = workArea.Bottom - Height - 24;
 
@@ -73,7 +74,6 @@ public partial class MainWindow : FluentWindow
         SetupStatusText.Text = string.Empty;
     }
 
-    // Expands and centers window upon successful unlock
     private void TransitionToVaultView()
     {
         var workArea = SystemParameters.WorkArea;
@@ -94,12 +94,14 @@ public partial class MainWindow : FluentWindow
 
         if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
         {
+            SetupStatusText.Foreground = ErrorBrush;
             SetupStatusText.Text = "Password must be at least 8 characters.";
             return;
         }
 
         if (password != SetupConfirmPasswordBox.Password)
         {
+            SetupStatusText.Foreground = ErrorBrush;
             SetupStatusText.Text = "Passwords do not match.";
             return;
         }
@@ -122,6 +124,7 @@ public partial class MainWindow : FluentWindow
         }
         catch (Exception ex)
         {
+            SetupStatusText.Foreground = ErrorBrush;
             SetupStatusText.Text = $"Error initializing vault: {ex.Message}";
         }
     }
@@ -140,11 +143,13 @@ public partial class MainWindow : FluentWindow
 
         if (string.IsNullOrWhiteSpace(password))
         {
+            UnlockStatusText.Foreground = ErrorBrush;
             UnlockStatusText.Text = "Enter master password.";
             return;
         }
 
         UnlockButton.IsEnabled = false;
+        UnlockStatusText.Foreground = SuccessBrush;
         UnlockStatusText.Text = "Unlocking...";
 
         try
@@ -155,7 +160,6 @@ public partial class MainWindow : FluentWindow
             var testDb = new DatabaseService(_dbFilePath, password);
             var items = await testDb.GetAllAsync();
 
-            // Validate decryption against first stored credential
             if (items.Count > 0)
             {
                 var testItem = items[0];
@@ -175,14 +179,17 @@ public partial class MainWindow : FluentWindow
         }
         catch (SqliteException)
         {
+            UnlockStatusText.Foreground = ErrorBrush;
             UnlockStatusText.Text = "Incorrect password.";
         }
         catch (CryptographicException)
         {
+            UnlockStatusText.Foreground = ErrorBrush;
             UnlockStatusText.Text = "Incorrect password.";
         }
         catch (Exception ex)
         {
+            UnlockStatusText.Foreground = ErrorBrush;
             UnlockStatusText.Text = $"Error: {ex.Message}";
         }
         finally
@@ -249,7 +256,6 @@ public partial class MainWindow : FluentWindow
                 string decrypted = _cryptoService.Decrypt(item.EncryptedPassword, item.Nonce, item.AuthTag, _derivedMasterKey);
                 Clipboard.SetText(decrypted);
 
-                // Auto-clear clipboard after 30 seconds
                 _clipboardCts?.Cancel();
                 _clipboardCts = new CancellationTokenSource();
                 var token = _clipboardCts.Token;
@@ -296,21 +302,21 @@ public partial class MainWindow : FluentWindow
 
         if (currentPassword != _activeMasterPassword)
         {
-            ChangePasswordStatusText.Foreground = System.Windows.Media.Brushes.Red;
+            ChangePasswordStatusText.Foreground = ErrorBrush;
             ChangePasswordStatusText.Text = "Current master password is incorrect.";
             return;
         }
 
         if (newPassword.Length < 8)
         {
-            ChangePasswordStatusText.Foreground = System.Windows.Media.Brushes.Red;
+            ChangePasswordStatusText.Foreground = ErrorBrush;
             ChangePasswordStatusText.Text = "New password must be at least 8 characters.";
             return;
         }
 
         if (newPassword != confirmNewPassword)
         {
-            ChangePasswordStatusText.Foreground = System.Windows.Media.Brushes.Red;
+            ChangePasswordStatusText.Foreground = ErrorBrush;
             ChangePasswordStatusText.Text = "Passwords do not match.";
             return;
         }
@@ -323,7 +329,6 @@ public partial class MainWindow : FluentWindow
             byte[] newSalt = _cryptoService.GenerateSalt();
             byte[] newKey = await _cryptoService.DeriveKeyAsync(newPassword, newSalt);
 
-            // Re-encrypt each stored password under the new key
             foreach (var item in items)
             {
                 string decrypted = _cryptoService.Decrypt(item.EncryptedPassword, item.Nonce, item.AuthTag, _derivedMasterKey);
@@ -349,20 +354,19 @@ public partial class MainWindow : FluentWindow
             ChangeNewPasswordBox.Clear();
             ChangeConfirmPasswordBox.Clear();
 
-            ChangePasswordStatusText.Foreground = System.Windows.Media.Brushes.LightGreen;
+            ChangePasswordStatusText.Foreground = SuccessBrush;
             ChangePasswordStatusText.Text = "Master password updated successfully.";
             await RefreshVaultListAsync();
         }
         catch (Exception ex)
         {
-            ChangePasswordStatusText.Foreground = System.Windows.Media.Brushes.Red;
+            ChangePasswordStatusText.Foreground = ErrorBrush;
             ChangePasswordStatusText.Text = $"Update failed: {ex.Message}";
         }
     }
 
     private void OnLockClicked(object sender, RoutedEventArgs e)
     {
-        // Zero master key buffer in memory
         if (_derivedMasterKey != null)
         {
             CryptographicOperations.ZeroMemory(_derivedMasterKey);
