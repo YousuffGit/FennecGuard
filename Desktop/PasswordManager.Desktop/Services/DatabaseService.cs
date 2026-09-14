@@ -23,7 +23,7 @@ public class DatabaseService
         _connectionString = builder.ConnectionString;
     }
 
-    // Ensures the credentials table exists in the encrypted database
+    // Ensures the encrypted database table schema is initialized
     public async Task InitializeDatabaseAsync()
     {
         await using var connection = new SqliteConnection(_connectionString);
@@ -46,7 +46,7 @@ public class DatabaseService
         await command.ExecuteNonQueryAsync();
     }
 
-    // Fetches all vault records
+    // Fetches all vault records ordered by title
     public async Task<List<VaultItem>> GetAllAsync()
     {
         var items = new List<VaultItem>();
@@ -76,7 +76,7 @@ public class DatabaseService
         return items;
     }
 
-    // Inserts a new credential record
+    // Persists a new encrypted credential
     public async Task AddItemAsync(VaultItem item)
     {
         await using var connection = new SqliteConnection(_connectionString);
@@ -100,7 +100,7 @@ public class DatabaseService
         await command.ExecuteNonQueryAsync();
     }
 
-    // Updates the SQLCipher disk encryption key and writes re-encrypted rows
+    // Executes PRAGMA rekey on disk and writes re-encrypted payloads atomically
     public async Task ReencryptAllItemsAsync(List<VaultItem> reencryptedItems, string newMasterPassword)
     {
         await using (var connection = new SqliteConnection(_connectionString))

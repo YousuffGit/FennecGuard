@@ -15,8 +15,8 @@ public partial class MainWindow : FluentWindow
 {
     private readonly CryptoService _cryptoService = new();
     private DatabaseService? _dbService;
-    private byte[]? _derivedMasterKey;
-    private string? _activeMasterPassword;
+    private byte[]? _derivedMasterKey; // Stored in pinned memory
+    private string? _lastCopiedPassword;
     private CancellationTokenSource? _clipboardCts;
 
     private readonly string _saltFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.salt");
@@ -37,10 +37,17 @@ public partial class MainWindow : FluentWindow
         ConfigureViewState();
     }
 
+    // Securely wipes memory when the window is closed
+    protected override void OnClosed(EventArgs e)
+    {
+        WipeSessionMemory();
+        base.OnClosed(e);
+    }
+
+    // Configures UI dimensions and layout based on lock state
     private void ConfigureViewState()
     {
         bool isFirstRun = !File.Exists(_dbFilePath) || !File.Exists(_saltFilePath);
-
         var workArea = SystemParameters.WorkArea;
 
         if (isFirstRun)
@@ -55,6 +62,7 @@ public partial class MainWindow : FluentWindow
         }
         else
         {
+            // Compact bottom-right unlock prompt
             Width = 340;
             Height = 280;
             Left = workArea.Right - Width - 24;
@@ -74,6 +82,7 @@ public partial class MainWindow : FluentWindow
         SetupStatusText.Text = string.Empty;
     }
 
+    // Centers and expands window after successful unlock
     private void TransitionToVaultView()
     {
         var workArea = SystemParameters.WorkArea;
@@ -111,10 +120,10 @@ public partial class MainWindow : FluentWindow
             byte[] salt = _cryptoService.GenerateSalt();
             await File.WriteAllBytesAsync(_saltFilePath, salt);
 
-            _derivedMasterKey = await _cryptoService.DeriveKeyAsync(password, salt);
-            _activeMasterPassword = password;
-            _dbService = new DatabaseService(_dbFilePath, password);
+            byte[] key = await _cryptoService.DeriveKeyAsync(password, salt);
+            SetMasterKey(key);
 
+            _dbService = new DatabaseService(_dbFilePath, password);
             await _dbService.InitializeDatabaseAsync();
             await RefreshVaultListAsync();
 
@@ -125,7 +134,7 @@ public partial class MainWindow : FluentWindow
         catch (Exception ex)
         {
             SetupStatusText.Foreground = ErrorBrush;
-            SetupStatusText.Text = $"Error initializing vault: {ex.Message}";
+            SetupStatusText.Text = $"Error: {ex.Message}";
         }
     }
 
@@ -155,19 +164,19 @@ public partial class MainWindow : FluentWindow
         try
         {
             byte[] salt = await File.ReadAllBytesAsync(_saltFilePath);
-            byte[] testKey = await _cryptoService.DeriveKeyAsync(password, salt);
+            byte[] derivedKey = await _cryptoService.DeriveKeyAsync(password, salt);
 
             var testDb = new DatabaseService(_dbFilePath, password);
             var items = await testDb.GetAllAsync();
 
+            // Verify decryption against first entry if one exists
             if (items.Count > 0)
             {
                 var testItem = items[0];
-                _cryptoService.Decrypt(testItem.EncryptedPassword, testItem.Nonce, testItem.AuthTag, testKey);
+                _cryptoService.Decrypt(testItem.EncryptedPassword, testItem.Nonce, testItem.AuthTag, derivedKey);
             }
 
-            _derivedMasterKey = testKey;
-            _activeMasterPassword = password;
+            SetMasterKey(derivedKey);
             _dbService = testDb;
 
             VaultItemsContainer.ItemsSource = items;
@@ -255,7 +264,9 @@ public partial class MainWindow : FluentWindow
             {
                 string decrypted = _cryptoService.Decrypt(item.EncryptedPassword, item.Nonce, item.AuthTag, _derivedMasterKey);
                 Clipboard.SetText(decrypted);
+                _lastCopiedPassword = decrypted;
 
+                // Scrub clipboard after 30 seconds
                 _clipboardCts?.Cancel();
                 _clipboardCts = new CancellationTokenSource();
                 var token = _clipboardCts.Token;
@@ -267,9 +278,10 @@ public partial class MainWindow : FluentWindow
                     {
                         Dispatcher.Invoke(() =>
                         {
-                            if (Clipboard.GetText() == decrypted)
+                            if (Clipboard.GetText() == _lastCopiedPassword)
                             {
                                 Clipboard.Clear();
+                                _lastCopiedPassword = null;
                             }
                         });
                     }
@@ -294,18 +306,11 @@ public partial class MainWindow : FluentWindow
 
     private async void OnChangeMasterPasswordClicked(object sender, RoutedEventArgs e)
     {
-        if (_dbService == null || _derivedMasterKey == null || _activeMasterPassword == null) return;
+        if (_dbService == null || _derivedMasterKey == null) return;
 
         string currentPassword = ChangeCurrentPasswordBox.Password;
         string newPassword = ChangeNewPasswordBox.Password;
         string confirmNewPassword = ChangeConfirmPasswordBox.Password;
-
-        if (currentPassword != _activeMasterPassword)
-        {
-            ChangePasswordStatusText.Foreground = ErrorBrush;
-            ChangePasswordStatusText.Text = "Current master password is incorrect.";
-            return;
-        }
 
         if (newPassword.Length < 8)
         {
@@ -323,6 +328,21 @@ public partial class MainWindow : FluentWindow
 
         try
         {
+            // Zero-knowledge current password verification: derive key and compare constant-time
+            byte[] currentSalt = await File.ReadAllBytesAsync(_saltFilePath);
+            byte[] testKey = await _cryptoService.DeriveKeyAsync(currentPassword, currentSalt);
+
+            bool isCurrentPasswordValid = _cryptoService.CompareKeys(testKey, _derivedMasterKey);
+            CryptographicOperations.ZeroMemory(testKey);
+
+            if (!isCurrentPasswordValid)
+            {
+                ChangePasswordStatusText.Foreground = ErrorBrush;
+                ChangePasswordStatusText.Text = "Current master password is incorrect.";
+                return;
+            }
+
+            // Re-encrypt credentials under new key
             var items = await _dbService.GetAllAsync();
             var reencryptedItems = new List<VaultItem>();
 
@@ -346,9 +366,7 @@ public partial class MainWindow : FluentWindow
             await _dbService.ReencryptAllItemsAsync(reencryptedItems, newPassword);
             await File.WriteAllBytesAsync(_saltFilePath, newSalt);
 
-            CryptographicOperations.ZeroMemory(_derivedMasterKey);
-            _derivedMasterKey = newKey;
-            _activeMasterPassword = newPassword;
+            SetMasterKey(newKey);
 
             ChangeCurrentPasswordBox.Clear();
             ChangeNewPasswordBox.Clear();
@@ -367,13 +385,7 @@ public partial class MainWindow : FluentWindow
 
     private void OnLockClicked(object sender, RoutedEventArgs e)
     {
-        if (_derivedMasterKey != null)
-        {
-            CryptographicOperations.ZeroMemory(_derivedMasterKey);
-            _derivedMasterKey = null;
-        }
-
-        _activeMasterPassword = null;
+        WipeSessionMemory();
         _dbService = null;
         VaultItemsContainer.ItemsSource = null;
 
@@ -403,13 +415,42 @@ public partial class MainWindow : FluentWindow
         ApplicationThemeManager.Apply(this);
     }
 
-    private void OnDarkThemeChecked(object sender, RoutedEventArgs e)
+    private void OnDarkThemeChecked(object sender, RoutedEventArgs e) => SwitchTheme(ApplicationTheme.Dark);
+    private void OnLightThemeChecked(object sender, RoutedEventArgs e) => SwitchTheme(ApplicationTheme.Light);
+
+    // Stores master key in pinned memory buffer
+    private void SetMasterKey(byte[] newKey)
     {
-        SwitchTheme(ApplicationTheme.Dark);
+        if (_derivedMasterKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_derivedMasterKey);
+        }
+
+        // Allocate in GC-pinned memory to prevent memory copies during heap compaction
+        _derivedMasterKey = GC.AllocateArray<byte>(newKey.Length, pinned: true);
+        Buffer.BlockCopy(newKey, 0, _derivedMasterKey, 0, newKey.Length);
+        CryptographicOperations.ZeroMemory(newKey);
     }
 
-    private void OnLightThemeChecked(object sender, RoutedEventArgs e)
+    // Zeroes out all active session keys and clears clipboard secrets
+    private void WipeSessionMemory()
     {
-        SwitchTheme(ApplicationTheme.Light);
+        if (_derivedMasterKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_derivedMasterKey);
+            _derivedMasterKey = null;
+        }
+
+        _clipboardCts?.Cancel();
+        _clipboardCts = null;
+
+        if (_lastCopiedPassword != null)
+        {
+            if (Clipboard.GetText() == _lastCopiedPassword)
+            {
+                Clipboard.Clear();
+            }
+            _lastCopiedPassword = null;
+        }
     }
 }
