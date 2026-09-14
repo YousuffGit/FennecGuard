@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FennecGuard</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body data-theme="dark">
+  <div class="header">
+    <div class="brand">
+      <img src="icons/logo.png" class="logo-img" alt="Logo" width="18" height="18">
+      <span class="title">FennecGuard</span>
+    </div>
+    <div class="header-actions">
+      <button id="theme-toggle-btn" class="icon-btn" title="Toggle Theme">🌓</button>
+      <button id="lock-btn" class="icon-btn" title="Lock Vault" style="display:none;">🔒</button>
+    </div>
+  </div>
+
+  <div id="locked-view" class="view">
+    <div class="lock-card">
+      <img src="icons/logo.png" alt="Logo" width="40" height="40" style="margin: 0 auto 4px;">
+      <h3>Vault is Locked</h3>
+      <p class="subtitle">Enter master password to unlock.</p>
+      <input type="password" id="master-password-input" placeholder="Master Password">
+      <button id="unlock-btn" class="primary-btn">Unlock Vault</button>
+      <div id="unlock-error" class="error-msg"></div>
+    </div>
+  </div>
+
+  <div id="disconnected-view" class="view" style="display:none;">
+    <div class="lock-card">
+      <div class="lock-icon">⚡</div>
+      <h3>Desktop App Disconnected</h3>
+      <p class="subtitle">Start FennecGuard desktop app to connect.</p>
+      <button id="retry-btn" class="primary-btn">Retry Connection</button>
+    </div>
+  </div>
+
+  <div id="unlocked-view" class="view" style="display:none;">
+    <div class="search-container">
+      <input type="text" id="search-input" placeholder="Search logins...">
+    </div>
+
+    <div class="current-site">
+      <span class="site-label">Current Tab:</span>
+      <span id="site-domain" class="site-domain">Detecting...</span>
+    </div>
+
+    <div id="credentials-list" class="credentials-list"></div>
+  </div>
+
+  <script type="module" src="dist/popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+﻿{
+  "manifest_version": 3,
+  "name": "FennecGuard",
+  "version": "1.0.0",
+  "description": "Secure desktop-connected password manager with zero-knowledge encryption.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "icons": {
+    "16": "icons/logo.png",
+    "48": "icons/logo.png",
+    "128": "icons/logo.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FennecGuard",
+    "default_icon": "icons/logo.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}
