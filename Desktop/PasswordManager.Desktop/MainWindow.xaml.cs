@@ -1,13 +1,26 @@
-﻿using System.IO;
+﻿using System.ComponentModel;
+using System.IO;
 using System.Security.Cryptography;
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Data.Sqlite;
+using Microsoft.Win32;
 using PasswordManager.Desktop.Models;
 using PasswordManager.Desktop.Services;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+
+// Disambiguate overlapping WPF and WinForms types
+using Application = System.Windows.Application;
+using Clipboard = System.Windows.Clipboard;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using Color = System.Windows.Media.Color;
+
+// WinForms tray components
+using NotifyIcon = System.Windows.Forms.NotifyIcon;
+using ContextMenuStrip = System.Windows.Forms.ContextMenuStrip;
+using ToolStripSeparator = System.Windows.Forms.ToolStripSeparator;
 
 namespace PasswordManager.Desktop;
 
@@ -15,9 +28,15 @@ public partial class MainWindow : FluentWindow
 {
     private readonly CryptoService _cryptoService = new();
     private DatabaseService? _dbService;
-    private byte[]? _derivedMasterKey; // Stored in pinned memory
+    private byte[]? _derivedMasterKey;
     private string? _lastCopiedPassword;
     private CancellationTokenSource? _clipboardCts;
+
+    private NotifyIcon? _notifyIcon;
+    private AppSettings _settings = new();
+    private DispatcherTimer? _autoLockTimer;
+    private DateTime _lastActivityTime = DateTime.UtcNow;
+    private bool _isExplicitExit;
 
     private readonly string _saltFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.salt");
     private readonly string _dbFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.db");
@@ -28,23 +47,155 @@ public partial class MainWindow : FluentWindow
     public MainWindow()
     {
         InitializeComponent();
+        _settings = SettingsService.Load();
+
         Loaded += MainWindow_Loaded;
+        InitializeTrayIcon();
+        InitializeAutoLockTimer();
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        DarkThemeRadio.IsChecked = true;
+        ApplyConfiguredTheme();
+
+        MinimizeToTraySwitch.IsChecked = _settings.MinimizeToTray;
+        StartAtLogonSwitch.IsChecked = IsStartupEnabled();
+        AutoLockSwitch.IsChecked = _settings.AutoLockEnabled;
+        AutoLockHoursBox.Text = _settings.AutoLockHours.ToString();
+        AutoLockHoursBox.IsEnabled = _settings.AutoLockEnabled;
+        ClipboardNotificationSwitch.IsChecked = _settings.ShowClipboardNotification;
+
         ConfigureViewState();
     }
 
-    // Securely wipes memory when the window is closed
+    // Intercepts close button ('X') to minimize to tray if enabled
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!_isExplicitExit && _settings.MinimizeToTray)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    // Handles minimize window state
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized && _settings.MinimizeToTray)
+        {
+            Hide();
+        }
+    }
+
+    // Securely wipes memory and disposes tray on window close
     protected override void OnClosed(EventArgs e)
     {
+        _notifyIcon?.Dispose();
+        _notifyIcon = null;
+
         WipeSessionMemory();
         base.OnClosed(e);
     }
 
-    // Configures UI dimensions and layout based on lock state
+    private void InitializeTrayIcon()
+    {
+        _notifyIcon = new NotifyIcon
+        {
+            Text = "FennecGuard",
+            Visible = true
+        };
+
+        try
+        {
+            var streamInfo = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/logo.ico"));
+            if (streamInfo != null)
+            {
+                using var stream = streamInfo.Stream;
+                _notifyIcon.Icon = new System.Drawing.Icon(stream);
+            }
+            else
+            {
+                string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "logo.ico");
+                _notifyIcon.Icon = File.Exists(iconPath) ? new System.Drawing.Icon(iconPath) : System.Drawing.SystemIcons.Shield;
+            }
+        }
+        catch
+        {
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Shield;
+        }
+
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Open FennecGuard", null, (s, e) => Dispatcher.Invoke(RestoreFromTray));
+        menu.Items.Add("Lock Vault", null, (s, e) => Dispatcher.Invoke(LockFromTray));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Exit", null, (s, e) => Dispatcher.Invoke(ExitFromTray));
+
+        _notifyIcon.ContextMenuStrip = menu;
+        _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreFromTray);
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void LockFromTray()
+    {
+        if (_derivedMasterKey != null)
+        {
+            OnLockClicked(this, new RoutedEventArgs());
+        }
+        RestoreFromTray();
+    }
+
+    // Performs complete shutdown from the system tray
+    private void ExitFromTray()
+    {
+        _isExplicitExit = true;
+
+        _notifyIcon?.Dispose();
+        _notifyIcon = null;
+
+        WipeSessionMemory();
+        Application.Current.Shutdown();
+    }
+
+    private void InitializeAutoLockTimer()
+    {
+        _autoLockTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(30)
+        };
+        _autoLockTimer.Tick += OnAutoLockTimerTick;
+        _autoLockTimer.Start();
+    }
+
+    private void OnAutoLockTimerTick(object? sender, EventArgs e)
+    {
+        if (_settings.AutoLockEnabled && _derivedMasterKey != null)
+        {
+            var elapsed = DateTime.UtcNow - _lastActivityTime;
+            if (elapsed.TotalHours >= _settings.AutoLockHours)
+            {
+                WipeSessionMemory();
+                _dbService = null;
+                VaultItemsContainer.ItemsSource = null;
+                ConfigureViewState();
+            }
+        }
+    }
+
+    private void UpdateActivity()
+    {
+        _lastActivityTime = DateTime.UtcNow;
+    }
+
     private void ConfigureViewState()
     {
         bool isFirstRun = !File.Exists(_dbFilePath) || !File.Exists(_saltFilePath);
@@ -62,7 +213,6 @@ public partial class MainWindow : FluentWindow
         }
         else
         {
-            // Compact bottom-right unlock prompt
             Width = 340;
             Height = 280;
             Left = workArea.Right - Width - 24;
@@ -75,6 +225,8 @@ public partial class MainWindow : FluentWindow
 
         VaultPanel.Visibility = Visibility.Collapsed;
         SettingsPanel.Visibility = Visibility.Collapsed;
+        CopyNotificationOverlay.Visibility = Visibility.Collapsed;
+
         SetupMasterPasswordBox.Clear();
         SetupConfirmPasswordBox.Clear();
         UnlockPasswordBox.Clear();
@@ -82,19 +234,20 @@ public partial class MainWindow : FluentWindow
         SetupStatusText.Text = string.Empty;
     }
 
-    // Centers and expands window after successful unlock
     private void TransitionToVaultView()
     {
         var workArea = SystemParameters.WorkArea;
         Width = 1020;
-        Height = 720;
+        Height = 740;
         Left = workArea.Left + (workArea.Width - Width) / 2;
         Top = workArea.Top + (workArea.Height - Height) / 2;
 
         UnlockPanel.Visibility = Visibility.Collapsed;
         SetupPanel.Visibility = Visibility.Collapsed;
         SettingsPanel.Visibility = Visibility.Collapsed;
+        CopyNotificationOverlay.Visibility = Visibility.Collapsed;
         VaultPanel.Visibility = Visibility.Visible;
+        UpdateActivity();
     }
 
     private async void OnInitializeVaultClicked(object sender, RoutedEventArgs e)
@@ -134,13 +287,13 @@ public partial class MainWindow : FluentWindow
         catch (Exception ex)
         {
             SetupStatusText.Foreground = ErrorBrush;
-            SetupStatusText.Text = $"Error: {ex.Message}";
+            SetupStatusText.Text = $"Error initializing vault: {ex.Message}";
         }
     }
 
     private void OnUnlockKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        if (e.Key == System.Windows.Input.Key.Enter)
         {
             OnUnlockClicked(sender, e);
         }
@@ -169,7 +322,6 @@ public partial class MainWindow : FluentWindow
             var testDb = new DatabaseService(_dbFilePath, password);
             var items = await testDb.GetAllAsync();
 
-            // Verify decryption against first entry if one exists
             if (items.Count > 0)
             {
                 var testItem = items[0];
@@ -218,6 +370,7 @@ public partial class MainWindow : FluentWindow
     private async void OnAddCredentialClicked(object sender, RoutedEventArgs e)
     {
         if (_dbService == null || _derivedMasterKey == null) return;
+        UpdateActivity();
 
         string title = NewTitleBox.Text.Trim();
         string username = NewUsernameBox.Text.Trim();
@@ -226,11 +379,6 @@ public partial class MainWindow : FluentWindow
 
         if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(plainPassword))
         {
-            System.Windows.MessageBox.Show(
-                "Title and Password are required.",
-                "Validation",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Warning);
             return;
         }
 
@@ -260,6 +408,7 @@ public partial class MainWindow : FluentWindow
     {
         if (sender is FrameworkElement element && element.Tag is VaultItem item && _derivedMasterKey != null)
         {
+            UpdateActivity();
             try
             {
                 string decrypted = _cryptoService.Decrypt(item.EncryptedPassword, item.Nonce, item.AuthTag, _derivedMasterKey);
@@ -287,26 +436,34 @@ public partial class MainWindow : FluentWindow
                     }
                 }, token);
 
-                System.Windows.MessageBox.Show(
-                    $"Password for '{item.Title}' copied to clipboard.\nAuto-clears in 30 seconds.",
-                    "Copied",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Information);
+                if (_settings.ShowClipboardNotification)
+                {
+                    DontShowCopyNotificationCheck.IsChecked = false;
+                    CopyNotificationOverlay.Visibility = Visibility.Visible;
+                }
             }
             catch
             {
-                System.Windows.MessageBox.Show(
-                    "Failed to decrypt password.",
-                    "Decryption Error",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Error);
             }
         }
+    }
+
+    private void OnDismissCopyNotificationClicked(object sender, RoutedEventArgs e)
+    {
+        if (DontShowCopyNotificationCheck.IsChecked == true)
+        {
+            _settings.ShowClipboardNotification = false;
+            ClipboardNotificationSwitch.IsChecked = false;
+            SettingsService.Save(_settings);
+        }
+
+        CopyNotificationOverlay.Visibility = Visibility.Collapsed;
     }
 
     private async void OnChangeMasterPasswordClicked(object sender, RoutedEventArgs e)
     {
         if (_dbService == null || _derivedMasterKey == null) return;
+        UpdateActivity();
 
         string currentPassword = ChangeCurrentPasswordBox.Password;
         string newPassword = ChangeNewPasswordBox.Password;
@@ -328,7 +485,6 @@ public partial class MainWindow : FluentWindow
 
         try
         {
-            // Zero-knowledge current password verification: derive key and compare constant-time
             byte[] currentSalt = await File.ReadAllBytesAsync(_saltFilePath);
             byte[] testKey = await _cryptoService.DeriveKeyAsync(currentPassword, currentSalt);
 
@@ -342,7 +498,6 @@ public partial class MainWindow : FluentWindow
                 return;
             }
 
-            // Re-encrypt credentials under new key
             var items = await _dbService.GetAllAsync();
             var reencryptedItems = new List<VaultItem>();
 
@@ -394,6 +549,7 @@ public partial class MainWindow : FluentWindow
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
+        UpdateActivity();
         VaultPanel.Visibility = Visibility.Collapsed;
         SettingsPanel.Visibility = Visibility.Visible;
         ChangePasswordStatusText.Text = string.Empty;
@@ -404,21 +560,166 @@ public partial class MainWindow : FluentWindow
 
     private void OnBackFromSettingsClicked(object sender, RoutedEventArgs e)
     {
+        UpdateActivity();
         SettingsPanel.Visibility = Visibility.Collapsed;
         VaultPanel.Visibility = Visibility.Visible;
     }
 
-    private void SwitchTheme(ApplicationTheme theme)
+    // ================= Theme Management =================
+
+    private void ApplyConfiguredTheme()
     {
-        if (!IsLoaded) return;
+        switch (_settings.Theme)
+        {
+            case "Light":
+                LightThemeRadio.IsChecked = true;
+                ApplyThemeDirect(ApplicationTheme.Light);
+                break;
+            case "Dark":
+                DarkThemeRadio.IsChecked = true;
+                ApplyThemeDirect(ApplicationTheme.Dark);
+                break;
+            default:
+                SystemThemeRadio.IsChecked = true;
+                ApplySystemTheme();
+                break;
+        }
+    }
+
+    private void ApplySystemTheme()
+    {
+        bool isSystemLight = IsWindowsInLightMode();
+        ApplyThemeDirect(isSystemLight ? ApplicationTheme.Light : ApplicationTheme.Dark);
+    }
+
+    private static bool IsWindowsInLightMode()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", false);
+            object? registryValue = key?.GetValue("AppsUseLightTheme");
+            return registryValue is int intValue && intValue == 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ApplyThemeDirect(ApplicationTheme theme)
+    {
         ApplicationThemeManager.Apply(theme, WindowBackdropType.None);
         ApplicationThemeManager.Apply(this);
     }
 
-    private void OnDarkThemeChecked(object sender, RoutedEventArgs e) => SwitchTheme(ApplicationTheme.Dark);
-    private void OnLightThemeChecked(object sender, RoutedEventArgs e) => SwitchTheme(ApplicationTheme.Light);
+    private void OnSystemThemeChecked(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.Theme = "System";
+        SettingsService.Save(_settings);
+        ApplySystemTheme();
+    }
 
-    // Stores master key in pinned memory buffer
+    private void OnDarkThemeChecked(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.Theme = "Dark";
+        SettingsService.Save(_settings);
+        ApplyThemeDirect(ApplicationTheme.Dark);
+    }
+
+    private void OnLightThemeChecked(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.Theme = "Light";
+        SettingsService.Save(_settings);
+        ApplyThemeDirect(ApplicationTheme.Light);
+    }
+
+    // ================= Settings Toggles =================
+
+    private void OnMinimizeToTrayToggled(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.MinimizeToTray = MinimizeToTraySwitch.IsChecked == true;
+        SettingsService.Save(_settings);
+    }
+
+    private void OnStartAtLogonToggled(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        bool enable = StartAtLogonSwitch.IsChecked == true;
+        SetStartup(enable);
+    }
+
+    private void OnClipboardNotificationToggled(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        _settings.ShowClipboardNotification = ClipboardNotificationSwitch.IsChecked == true;
+        SettingsService.Save(_settings);
+    }
+
+    private static bool IsStartupEnabled()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false);
+            return key?.GetValue("FennecGuard") != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void SetStartup(bool enable)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+            if (key == null) return;
+
+            if (enable)
+            {
+                string? exePath = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(exePath))
+                {
+                    key.SetValue("FennecGuard", $"\"{exePath}\"");
+                }
+            }
+            else
+            {
+                key.DeleteValue("FennecGuard", false);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    // ================= Auto-Lock =================
+
+    private void OnAutoLockToggled(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        bool isEnabled = AutoLockSwitch.IsChecked == true;
+        _settings.AutoLockEnabled = isEnabled;
+        AutoLockHoursBox.IsEnabled = isEnabled;
+        SettingsService.Save(_settings);
+    }
+
+    private void OnAutoLockHoursChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        if (int.TryParse(AutoLockHoursBox.Text.Trim(), out int hours) && hours > 0)
+        {
+            _settings.AutoLockHours = hours;
+            SettingsService.Save(_settings);
+        }
+    }
+
+    // ================= Memory Hygiene =================
+
     private void SetMasterKey(byte[] newKey)
     {
         if (_derivedMasterKey != null)
@@ -426,13 +727,11 @@ public partial class MainWindow : FluentWindow
             CryptographicOperations.ZeroMemory(_derivedMasterKey);
         }
 
-        // Allocate in GC-pinned memory to prevent memory copies during heap compaction
         _derivedMasterKey = GC.AllocateArray<byte>(newKey.Length, pinned: true);
         Buffer.BlockCopy(newKey, 0, _derivedMasterKey, 0, newKey.Length);
         CryptographicOperations.ZeroMemory(newKey);
     }
 
-    // Zeroes out all active session keys and clears clipboard secrets
     private void WipeSessionMemory()
     {
         if (_derivedMasterKey != null)

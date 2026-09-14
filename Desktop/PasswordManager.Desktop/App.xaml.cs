@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using Application = System.Windows.Application;
 
 namespace PasswordManager.Desktop;
 
@@ -10,7 +11,7 @@ public partial class App : Application
 
         DispatcherUnhandledException += (sender, args) =>
         {
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 $"Startup Error:\n\n{args.Exception.Message}\n\n{args.Exception.InnerException?.Message}",
                 "FennecGuard Error",
                 MessageBoxButton.OK,

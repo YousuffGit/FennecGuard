@@ -4,8 +4,8 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="FennecGuard" 
         Icon="Assets/logo.ico"
-        Height="720" 
-        Width="1000"
+        Height="740" 
+        Width="1020"
         WindowBackdropType="None"
         Background="{DynamicResource ApplicationBackgroundBrush}"
         Foreground="{DynamicResource TextFillColorPrimaryBrush}">
@@ -20,11 +20,7 @@
             <ui:TitleBar Title="" />
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False">
                 <Image Source="Assets/logo.ico" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
-                <TextBlock Text="FennecGuard" 
-                           FontWeight="SemiBold" 
-                           FontSize="12" 
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" 
-                           VerticalAlignment="Center" />
+                <TextBlock Text="FennecGuard" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
@@ -33,7 +29,6 @@
             <ui:Card Width="440" Padding="28">
                 <StackPanel>
                     <Image Source="Assets/logo.ico" Width="48" Height="48" Margin="0,0,0,16" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
-
                     <ui:TextBlock Text="Welcome to FennecGuard" FontTypography="Title" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
                     <ui:TextBlock Text="Create a master password to initialize your vault." Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,24" />
 
@@ -43,7 +38,7 @@
                     <ui:TextBlock Text="Confirm Master Password" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
                     <ui:PasswordBox x:Name="SetupConfirmPasswordBox" PlaceholderText="Confirm Master Password" Height="40" Margin="0,0,0,24" />
 
-                    <ui:Button Content="Initialize Vault" Appearance="Primary" Height="40" HorizontalAlignment="Stretch" Margin="0,0,0,12" Click="OnInitializeVaultClicked" />
+                    <ui:Button Style="{StaticResource AccentActionButtonStyle}" Content="Initialize Vault" Height="40" HorizontalAlignment="Stretch" Margin="0,0,0,12" Click="OnInitializeVaultClicked" />
                     <TextBlock x:Name="SetupStatusText" Text="" Foreground="#D13438" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
                 </StackPanel>
             </ui:Card>
@@ -53,12 +48,11 @@
         <Grid x:Name="UnlockPanel" Grid.Row="1" Visibility="Visible" Margin="18">
             <StackPanel VerticalAlignment="Center">
                 <Image Source="Assets/logo.ico" Width="36" Height="36" Margin="0,0,0,10" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
-
                 <ui:TextBlock Text="FennecGuard" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,2" />
                 <ui:TextBlock Text="Vault locked" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,14" />
 
                 <ui:PasswordBox x:Name="UnlockPasswordBox" PlaceholderText="Master Password" Height="38" Margin="0,0,0,12" KeyDown="OnUnlockKeyDown" />
-                <ui:Button x:Name="UnlockButton" Content="Unlock" Appearance="Primary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,10" Click="OnUnlockClicked" />
+                <ui:Button x:Name="UnlockButton" Style="{StaticResource AccentActionButtonStyle}" Content="Unlock" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,10" Click="OnUnlockClicked" />
 
                 <TextBlock x:Name="UnlockStatusText" Text="" Foreground="#D13438" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" FontSize="12" />
             </StackPanel>
@@ -75,8 +69,8 @@
             <DockPanel Grid.Row="0" Margin="0,0,0,18">
                 <ui:TextBlock Text="Vault Logins" FontTypography="Title" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" DockPanel.Dock="Left" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Center">
-                    <ui:Button Content="Settings" Appearance="Secondary" Margin="0,0,8,0" Click="OnSettingsClicked" />
-                    <ui:Button Content="Lock Vault" Appearance="Secondary" Click="OnLockClicked" />
+                    <ui:Button Style="{StaticResource SecondaryActionButtonStyle}" Content="Settings" Margin="0,0,8,0" Click="OnSettingsClicked" />
+                    <ui:Button Style="{StaticResource SecondaryActionButtonStyle}" Content="Lock Vault" Click="OnLockClicked" />
                 </StackPanel>
             </DockPanel>
 
@@ -105,7 +99,7 @@
                                             </StackPanel>
                                         </StackPanel>
 
-                                        <ui:Button Grid.Column="1" Content="Copy Password" Appearance="Secondary" Click="OnCopyPasswordClicked" Tag="{Binding}" VerticalAlignment="Center" />
+                                        <ui:Button Style="{StaticResource SecondaryActionButtonStyle}" Grid.Column="1" Content="Copy Password" Click="OnCopyPasswordClicked" Tag="{Binding}" VerticalAlignment="Center" />
                                     </Grid>
                                 </ui:Card>
                             </DataTemplate>
@@ -131,7 +125,7 @@
                         <ui:TextBox x:Name="NewUrlBox" PlaceholderText="Website URL" Margin="0,0,8,0" Grid.Column="2" />
                         <ui:PasswordBox x:Name="NewPasswordBox" PlaceholderText="Password" Margin="0,0,8,0" Grid.Column="3" />
 
-                        <ui:Button Content="Save" Appearance="Primary" Grid.Column="4" Width="80" Click="OnAddCredentialClicked" />
+                        <ui:Button Style="{StaticResource AccentActionButtonStyle}" Content="Save" Grid.Column="4" Width="80" Click="OnAddCredentialClicked" />
                     </Grid>
                 </StackPanel>
             </ui:Card>
@@ -145,26 +139,82 @@
             </Grid.RowDefinitions>
 
             <DockPanel Grid.Row="0" Margin="0,0,0,20">
-                <ui:Button Content="← Back to Vault" Appearance="Secondary" DockPanel.Dock="Left" Click="OnBackFromSettingsClicked" Margin="0,0,16,0" />
+                <ui:Button Style="{StaticResource SecondaryActionButtonStyle}" Content="← Back to Vault" DockPanel.Dock="Left" Click="OnBackFromSettingsClicked" Margin="0,0,16,0" />
                 <ui:TextBlock Text="Settings" FontTypography="Title" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
             </DockPanel>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <StackPanel MaxWidth="640" HorizontalAlignment="Left">
-                    <!-- 1. Appearance -->
+                <StackPanel MaxWidth="680" HorizontalAlignment="Left">
+                    
+                    <!-- 1. Appearance Card -->
                     <ui:Card Margin="0,0,0,14" Padding="20">
                         <StackPanel>
                             <ui:TextBlock Text="Appearance" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4" />
-                            <ui:TextBlock Text="Select your preferred application color theme." Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,14" />
-                            
+                            <ui:TextBlock Text="Customize your color palette or sync with Windows system preferences." Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,14" />
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="DarkThemeRadio" Content="Dark Mode" Checked="OnDarkThemeChecked" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,24,0" />
+                                <RadioButton x:Name="SystemThemeRadio" Content="System Default" Checked="OnSystemThemeChecked" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,20,0" />
+                                <RadioButton x:Name="DarkThemeRadio" Content="Dark Mode" Checked="OnDarkThemeChecked" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,20,0" />
                                 <RadioButton x:Name="LightThemeRadio" Content="Light Mode" Checked="OnLightThemeChecked" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                             </StackPanel>
                         </StackPanel>
                     </ui:Card>
 
-                    <!-- 2. Change Master Password -->
+                    <!-- 2. System & Background Behavior Card -->
+                    <ui:Card Margin="0,0,0,14" Padding="20">
+                        <StackPanel>
+                            <ui:TextBlock Text="System &amp; Background" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4" />
+                            <ui:TextBlock Text="Configure tray minimization, startup, and notification preferences." Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16" />
+
+                            <DockPanel Margin="0,0,0,14">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="480">
+                                    <ui:TextBlock Text="Minimize to System Tray" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,2" />
+                                    <ui:TextBlock Text="Keeps FennecGuard accessible in the Windows notification area when minimized." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="MinimizeToTraySwitch" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnMinimizeToTrayToggled" />
+                            </DockPanel>
+
+                            <DockPanel Margin="0,0,0,14">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="480">
+                                    <ui:TextBlock Text="Start at System Logon" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,2" />
+                                    <ui:TextBlock Text="Automatically launch FennecGuard in the background when logging into Windows." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="StartAtLogonSwitch" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnStartAtLogonToggled" />
+                            </DockPanel>
+
+                            <!-- Clipboard Copy Notification Toggle -->
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="480">
+                                    <ui:TextBlock Text="Clipboard Copy Notification" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,2" />
+                                    <ui:TextBlock Text="Display a themed confirmation dialog when copying a password." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="ClipboardNotificationSwitch" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnClipboardNotificationToggled" />
+                            </DockPanel>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 3. Auto-Lock Card -->
+                    <ui:Card Margin="0,0,0,14" Padding="20">
+                        <StackPanel>
+                            <ui:TextBlock Text="Auto-Lock" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4" />
+                            <ui:TextBlock Text="Automatically lock your vault and wipe session keys after inactivity." Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16" />
+
+                            <DockPanel Margin="0,0,0,12">
+                                <StackPanel DockPanel.Dock="Left" MaxWidth="480">
+                                    <ui:TextBlock Text="Enable Auto-Lock" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,2" />
+                                    <ui:TextBlock Text="Secures the vault and purges active memory after the configured period." Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ui:ToggleSwitch x:Name="AutoLockSwitch" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="OnAutoLockToggled" />
+                            </DockPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <ui:TextBlock Text="Lock vault after:" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,10,0" />
+                                <ui:TextBox x:Name="AutoLockHoursBox" Width="64" Text="24" TextChanged="OnAutoLockHoursChanged" Margin="0,0,8,0" />
+                                <ui:TextBlock Text="hour(s)" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 4. Change Master Password Card -->
                     <ui:Card Margin="0,0,0,14" Padding="20">
                         <StackPanel>
                             <ui:TextBlock Text="Change Master Password" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4" />
@@ -179,12 +229,12 @@
                             <ui:TextBlock Text="Confirm New Master Password" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6" />
                             <ui:PasswordBox x:Name="ChangeConfirmPasswordBox" PlaceholderText="Confirm New Password" Height="38" Margin="0,0,0,16" />
 
-                            <ui:Button Content="Update Password" Appearance="Primary" Height="38" Click="OnChangeMasterPasswordClicked" Margin="0,0,0,10" />
+                            <ui:Button Style="{StaticResource AccentActionButtonStyle}" Content="Update Password" Height="38" Click="OnChangeMasterPasswordClicked" Margin="0,0,0,10" />
                             <TextBlock x:Name="ChangePasswordStatusText" Text="" TextWrapping="Wrap" />
                         </StackPanel>
                     </ui:Card>
 
-                    <!-- 3. Security Specifications -->
+                    <!-- 5. Security Specifications Card -->
                     <ui:Card Padding="20" Margin="0,0,0,20">
                         <StackPanel>
                             <ui:TextBlock Text="Security Specifications" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4" />
@@ -198,6 +248,21 @@
                     </ui:Card>
                 </StackPanel>
             </ScrollViewer>
+        </Grid>
+
+        <!-- Themed Fluent Copy Notification Modal Overlay -->
+        <Grid x:Name="CopyNotificationOverlay" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed" Background="#66000000">
+            <ui:Card Width="400" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <ui:TextBlock Text="Password Copied" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8" />
+                    <ui:TextBlock Text="The password has been copied to your clipboard. For your security, it will automatically clear from your clipboard in 30 seconds." 
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,20" FontSize="13" />
+
+                    <CheckBox x:Name="DontShowCopyNotificationCheck" Content="Don't show this notification again" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,18" />
+
+                    <ui:Button Style="{StaticResource AccentActionButtonStyle}" Content="OK" HorizontalAlignment="Right" Width="90" Click="OnDismissCopyNotificationClicked" />
+                </StackPanel>
+            </ui:Card>
         </Grid>
     </Grid>
 </ui:FluentWindow>
