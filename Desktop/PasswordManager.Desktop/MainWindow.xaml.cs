@@ -55,7 +55,7 @@ public partial class MainWindow : FluentWindow
         InitializeTrayIcon();
         InitializeAutoLockTimer();
 
-        // Start secure loopback server for the browser extension
+        // Start secure loopback server for extension integration
         _localServer = new LocalServerService(this);
         _localServer.Start();
     }
@@ -108,6 +108,39 @@ public partial class MainWindow : FluentWindow
     }
 
     // ================= Extension Bridge Handlers =================
+
+    public async Task<bool> SaveCredentialFromIpcAsync(string title, string username, string url, string password)
+    {
+        if (_dbService == null || _derivedMasterKey == null) return false;
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(password)) return false;
+
+        try
+        {
+            var (ciphertext, nonce, authTag) = _cryptoService.Encrypt(password, _derivedMasterKey);
+            var newItem = new VaultItem
+            {
+                Title = title,
+                Username = username,
+                WebsiteUrl = url,
+                EncryptedPassword = ciphertext,
+                Nonce = nonce,
+                AuthTag = authTag
+            };
+
+            await _dbService.AddItemAsync(newItem);
+
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await RefreshVaultListAsync();
+            });
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public async Task<bool> UnlockFromIpcAsync(string password)
     {

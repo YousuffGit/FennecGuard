@@ -11,6 +11,13 @@ public class LocalServerService
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private const int Port = 41893;
+    private const string ExpectedClientHeader = "Extension";
+
+    // Enforce camelCase JSON formatting so TypeScript and C# always match
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public LocalServerService(MainWindow window)
     {
@@ -55,14 +62,33 @@ public class LocalServerService
         var req = context.Request;
         var res = context.Response;
 
-        // CORS headers allowing browser extension access
-        res.Headers.Add("Access-Control-Allow-Origin", "*");
+        string? origin = req.Headers["Origin"];
+
+        // Anti-CSRF: Reject external public web pages
+        if (!string.IsNullOrEmpty(origin) && 
+            (origin.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+             origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+        {
+            res.StatusCode = (int)HttpStatusCode.Forbidden;
+            res.Close();
+            return;
+        }
+
+        res.Headers.Add("Access-Control-Allow-Origin", string.IsNullOrEmpty(origin) ? "*" : origin);
         res.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+        res.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-FennecGuard-Client");
 
         if (req.HttpMethod == "OPTIONS")
         {
             res.StatusCode = 204;
+            res.Close();
+            return;
+        }
+
+        string? clientHeader = req.Headers["X-FennecGuard-Client"];
+        if (clientHeader != ExpectedClientHeader)
+        {
+            res.StatusCode = (int)HttpStatusCode.Forbidden;
             res.Close();
             return;
         }
@@ -79,7 +105,7 @@ public class LocalServerService
                     success = true,
                     isUnlocked = _window.IsVaultUnlocked,
                     hasVault = _window.HasVaultInitialized
-                });
+                }, JsonOptions);
             }
             else if (req.HttpMethod == "POST" && path == "/unlock")
             {
@@ -89,30 +115,30 @@ public class LocalServerService
                 string password = doc.RootElement.GetProperty("password").GetString() ?? "";
 
                 bool unlocked = await _window.UnlockFromIpcAsync(password);
-                responseJson = JsonSerializer.Serialize(new { success = unlocked });
+                responseJson = JsonSerializer.Serialize(new { success = unlocked }, JsonOptions);
             }
             else if (req.HttpMethod == "POST" && path == "/lock")
             {
                 await _window.LockFromIpcAsync();
-                responseJson = JsonSerializer.Serialize(new { success = true });
+                responseJson = JsonSerializer.Serialize(new { success = true }, JsonOptions);
             }
             else if (req.HttpMethod == "GET" && path == "/logins")
             {
                 if (!_window.IsVaultUnlocked)
                 {
-                    responseJson = JsonSerializer.Serialize(new { success = false, error = "Vault locked" });
+                    responseJson = JsonSerializer.Serialize(new { success = false, error = "Vault locked" }, JsonOptions);
                 }
                 else
                 {
                     var logins = await _window.GetLoginsForIpcAsync();
-                    responseJson = JsonSerializer.Serialize(new { success = true, items = logins });
+                    responseJson = JsonSerializer.Serialize(new { success = true, items = logins }, JsonOptions);
                 }
             }
             else if (req.HttpMethod == "POST" && path == "/credential")
             {
                 if (!_window.IsVaultUnlocked)
                 {
-                    responseJson = JsonSerializer.Serialize(new { success = false, error = "Vault locked" });
+                    responseJson = JsonSerializer.Serialize(new { success = false, error = "Vault locked" }, JsonOptions);
                 }
                 else
                 {
@@ -122,13 +148,33 @@ public class LocalServerService
                     string id = doc.RootElement.GetProperty("id").GetString() ?? "";
 
                     var cred = await _window.GetDecryptedCredentialForIpcAsync(id);
-                    responseJson = JsonSerializer.Serialize(new { success = cred != null, credential = cred });
+                    responseJson = JsonSerializer.Serialize(new { success = cred != null, credential = cred }, JsonOptions);
+                }
+            }
+            else if (req.HttpMethod == "POST" && path == "/save")
+            {
+                if (!_window.IsVaultUnlocked)
+                {
+                    responseJson = JsonSerializer.Serialize(new { success = false, error = "Vault locked" }, JsonOptions);
+                }
+                else
+                {
+                    using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
+                    string body = await reader.ReadToEndAsync();
+                    using var doc = JsonDocument.Parse(body);
+                    string title = doc.RootElement.GetProperty("title").GetString() ?? "";
+                    string username = doc.RootElement.GetProperty("username").GetString() ?? "";
+                    string url = doc.RootElement.GetProperty("url").GetString() ?? "";
+                    string password = doc.RootElement.GetProperty("password").GetString() ?? "";
+
+                    bool saved = await _window.SaveCredentialFromIpcAsync(title, username, url, password);
+                    responseJson = JsonSerializer.Serialize(new { success = saved }, JsonOptions);
                 }
             }
         }
         catch (Exception ex)
         {
-            responseJson = JsonSerializer.Serialize(new { success = false, error = ex.Message });
+            responseJson = JsonSerializer.Serialize(new { success = false, error = ex.Message }, JsonOptions);
         }
 
         byte[] buffer = Encoding.UTF8.GetBytes(responseJson);
