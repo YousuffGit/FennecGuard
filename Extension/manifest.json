@@ -10,9 +10,7 @@
   ],
   "host_permissions": [
     "http://127.0.0.1/*",
-    "http://127.0.0.1:41893/*",
-    "http://localhost/*",
-    "http://localhost:41893/*"
+    "http://localhost/*"
   ],
   "icons": {
     "16": "icons/logo.png",

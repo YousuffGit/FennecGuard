@@ -1,23 +1,52 @@
 "use strict";
 (() => {
     const BG_API_BASE = "http://127.0.0.1:41893";
+    let authToken = "";
+    async function getAuthToken() {
+        if (authToken)
+            return authToken;
+        try {
+            const res = await fetch(chrome.runtime.getURL("token.json"));
+            const data = await res.json();
+            authToken = data.token || "";
+        }
+        catch { }
+        return authToken;
+    }
     chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         // API Loopback Proxy
         if (request.target === "API") {
-            fetch(`${BG_API_BASE}${request.endpoint}`, {
-                method: request.method || "GET",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-FennecGuard-Client": "Extension"
-                },
-                body: request.body ? JSON.stringify(request.body) : undefined
-            })
-                .then(res => res.json())
-                .then(data => sendResponse(data))
-                .catch(err => sendResponse({ success: false, error: err?.message || "Desktop app offline" }));
-            return true;
+            (async () => {
+                // Fallback checks to prevent any "undefined" URL string parsing
+                const endpoint = request.endpoint || request.url || (request.payload ? request.payload.endpoint : null);
+                if (!endpoint || typeof endpoint !== "string") {
+                    sendResponse({ success: false, error: "Invalid API endpoint" });
+                    return;
+                }
+                const token = await getAuthToken();
+                const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+                try {
+                    const res = await fetch(`${BG_API_BASE}${cleanEndpoint}`, {
+                        method: request.method || "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-FennecGuard-Auth": token
+                        },
+                        body: request.body ? JSON.stringify(request.body) : undefined
+                    });
+                    if (!res.ok) {
+                        sendResponse({ success: false, error: `Server returned ${res.status}` });
+                        return;
+                    }
+                    const data = await res.json();
+                    sendResponse(data);
+                }
+                catch (err) {
+                    sendResponse({ success: false, error: err?.message || "Desktop app offline" });
+                }
+            })();
+            return true; // Keep channel open for async response
         }
-        // Persist pending save across service worker restarts
         if (request.target === "STAGE_PENDING_SAVE") {
             if (chrome.storage?.session) {
                 chrome.storage.session.set({ pendingSave: { ...request.credential, timestamp: Date.now() } });

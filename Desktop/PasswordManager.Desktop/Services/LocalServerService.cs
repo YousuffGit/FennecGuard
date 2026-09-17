@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -11,9 +12,14 @@ public class LocalServerService
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private const int Port = 41893;
-    private const string ExpectedClientHeader = "Extension";
+    private const long MaxPayloadBytes = 64 * 1024; // 64 KB DoS protection ceiling
 
-    // Enforce camelCase JSON formatting so TypeScript and C# always match
+    // Rate limiting state for /unlock
+    private int _failedAttempts = 0;
+    private DateTime _lockoutUntil = DateTime.MinValue;
+
+    private readonly byte[] _expectedTokenBytes;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -22,6 +28,19 @@ public class LocalServerService
     public LocalServerService(MainWindow window)
     {
         _window = window;
+
+        string tokenFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "token.json");
+        string token = "";
+        if (File.Exists(tokenFile))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(tokenFile));
+                token = doc.RootElement.GetProperty("token").GetString() ?? "";
+            }
+            catch {}
+        }
+        _expectedTokenBytes = Encoding.UTF8.GetBytes(token);
     }
 
     public void Start()
@@ -76,7 +95,7 @@ public class LocalServerService
 
         res.Headers.Add("Access-Control-Allow-Origin", string.IsNullOrEmpty(origin) ? "*" : origin);
         res.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-FennecGuard-Client");
+        res.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-FennecGuard-Auth");
 
         if (req.HttpMethod == "OPTIONS")
         {
@@ -85,10 +104,28 @@ public class LocalServerService
             return;
         }
 
-        string? clientHeader = req.Headers["X-FennecGuard-Client"];
-        if (clientHeader != ExpectedClientHeader)
+        // DoS Protection: Reject payloads larger than 64 KB
+        if (req.ContentLength64 > MaxPayloadBytes)
         {
-            res.StatusCode = (int)HttpStatusCode.Forbidden;
+            res.StatusCode = (int)HttpStatusCode.RequestEntityTooLarge;
+            res.Close();
+            return;
+        }
+
+        // Validate Shared Secret Authentication Token (Constant-time check)
+        string? incomingToken = req.Headers["X-FennecGuard-Auth"];
+        byte[] incomingBytes = Encoding.UTF8.GetBytes(incomingToken ?? "");
+
+        bool isValidToken = incomingBytes.Length == _expectedTokenBytes.Length &&
+                            CryptographicOperations.FixedTimeEquals(incomingBytes, _expectedTokenBytes);
+
+        if (!isValidToken)
+        {
+            res.StatusCode = (int)HttpStatusCode.Unauthorized;
+            byte[] errBuf = Encoding.UTF8.GetBytes("{\"success\":false,\"error\":\"Unauthorized token\"}");
+            res.ContentType = "application/json";
+            res.ContentLength64 = errBuf.Length;
+            await res.OutputStream.WriteAsync(errBuf);
             res.Close();
             return;
         }
@@ -109,13 +146,36 @@ public class LocalServerService
             }
             else if (req.HttpMethod == "POST" && path == "/unlock")
             {
-                using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
-                string body = await reader.ReadToEndAsync();
-                using var doc = JsonDocument.Parse(body);
-                string password = doc.RootElement.GetProperty("password").GetString() ?? "";
+                // Rate Limiting Check: 5 attempts triggers 30s cooldown
+                if (DateTime.UtcNow < _lockoutUntil)
+                {
+                    int secondsLeft = (int)(_lockoutUntil - DateTime.UtcNow).TotalSeconds;
+                    responseJson = JsonSerializer.Serialize(new { success = false, error = $"Too many failed attempts. Wait {secondsLeft}s." }, JsonOptions);
+                }
+                else
+                {
+                    using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
+                    string body = await reader.ReadToEndAsync();
+                    using var doc = JsonDocument.Parse(body);
+                    string password = doc.RootElement.GetProperty("password").GetString() ?? "";
 
-                bool unlocked = await _window.UnlockFromIpcAsync(password);
-                responseJson = JsonSerializer.Serialize(new { success = unlocked }, JsonOptions);
+                    bool unlocked = await _window.UnlockFromIpcAsync(password);
+                    if (unlocked)
+                    {
+                        _failedAttempts = 0;
+                        responseJson = JsonSerializer.Serialize(new { success = true }, JsonOptions);
+                    }
+                    else
+                    {
+                        _failedAttempts++;
+                        if (_failedAttempts >= 5)
+                        {
+                            _lockoutUntil = DateTime.UtcNow.AddSeconds(30);
+                            _failedAttempts = 0;
+                        }
+                        responseJson = JsonSerializer.Serialize(new { success = false, error = "Incorrect password" }, JsonOptions);
+                    }
+                }
             }
             else if (req.HttpMethod == "POST" && path == "/lock")
             {

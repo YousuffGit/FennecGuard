@@ -7,6 +7,17 @@
   }
 
   const POPUP_API_BASE = "http://127.0.0.1:41893";
+  let cachedToken = "";
+
+  async function getAuthToken(): Promise<string> {
+    if (cachedToken) return cachedToken;
+    try {
+      const res = await fetch(chrome.runtime.getURL("token.json"));
+      const data = await res.json();
+      cachedToken = data.token || "";
+    } catch {}
+    return cachedToken;
+  }
 
   document.addEventListener("DOMContentLoaded", async () => {
     const themeBtn = document.getElementById("theme-toggle-btn") as HTMLButtonElement;
@@ -224,11 +235,12 @@
 
   async function popupApiCall(endpoint: string, method: string = "GET", body?: any): Promise<any> {
     try {
+      const token = await getAuthToken();
       const res = await fetch(`${POPUP_API_BASE}${endpoint}`, {
         method,
         headers: {
           "Content-Type": "application/json",
-          "X-FennecGuard-Client": "Extension"
+          "X-FennecGuard-Auth": token
         },
         body: body ? JSON.stringify(body) : undefined
       });

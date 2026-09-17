@@ -1,5 +1,4 @@
 "use strict";
-// FennecGuard Content Script: Form Autofill, In-Field Badges & Persistent Save Prompt
 (() => {
     const logoUrl = chrome.runtime.getURL("icons/logo.png");
     const STORAGE_KEY = "fennecguard_pending_credential";
@@ -14,7 +13,7 @@
             sendResponse({ success });
         }
     });
-    // Track credentials in real-time as user types
+    // Continuously buffer typed inputs
     document.addEventListener("input", (e) => {
         if (e.target instanceof HTMLInputElement) {
             if (e.target.type === "password") {
@@ -28,7 +27,7 @@
             }
         }
     }, true);
-    // Safely execute init whether page is loading or already loaded
+    // Initialize immediately if DOM is ready, otherwise on DOMContentLoaded
     function init() {
         scanFields();
         checkPendingSave();
@@ -41,7 +40,6 @@
     }
     const observer = new MutationObserver(() => scanFields());
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    // Decorate fields and attempt autofill
     function scanFields() {
         const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'))
             .filter(isSecurelyVisible);
@@ -204,6 +202,7 @@
             }
             dropdown.replaceChildren();
             const currentDomain = window.location.hostname.replace("www.", "").toLowerCase();
+            // Send cleanly defined endpoint to background
             const data = await sendToBackground("/logins");
             if (!data?.success) {
                 if (data?.error === "Vault locked") {
@@ -256,9 +255,7 @@
         dropdown.appendChild(note);
         dropdown.style.display = "flex";
     }
-    // ================= Credential Capture =================
     function saveCredentialCandidate() {
-        // Read from DOM if buffer missed it
         if (!bufferedPassword || bufferedPassword.length < 4) {
             const pField = document.querySelector('input[type="password"]');
             if (pField && pField.value)
@@ -277,15 +274,12 @@
                 originUrl: window.location.href,
                 timestamp: Date.now()
             };
-            // Store in chrome.storage.local (survives page redirects, subdomains, and worker sleep)
             chrome.storage.local.set({ [STORAGE_KEY]: candidate });
-            // For Single-Page Apps (no redirect): check after 1.5 seconds
             setTimeout(() => {
                 checkPendingSave();
             }, 1500);
         }
     }
-    // Intercept submit, Enter, and button clicks
     document.addEventListener("submit", () => saveCredentialCandidate(), true);
     document.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && e.target instanceof HTMLInputElement) {
@@ -302,27 +296,22 @@
             }
         }
     }, true);
-    // Capture right before navigation/redirect occurs
     window.addEventListener("beforeunload", () => {
         saveCredentialCandidate();
     }, true);
-    // Check storage on page load
     function checkPendingSave() {
         chrome.storage.local.get(STORAGE_KEY, async (result) => {
             const item = result?.[STORAGE_KEY];
             if (!item)
                 return;
-            // Expire candidates older than 3 minutes
             if (Date.now() - item.timestamp > 180000) {
                 chrome.storage.local.remove(STORAGE_KEY);
                 return;
             }
             const currentDomain = window.location.hostname.replace("www.", "").toLowerCase();
-            // Ensure domain matches candidate
             if (!isDomainMatch(currentDomain, item.domain) && !isDomainMatch(item.domain, currentDomain)) {
                 return;
             }
-            // Check if credentials are already in vault
             const data = await sendToBackground("/logins");
             if (data?.success && Array.isArray(data.items)) {
                 const exists = data.items.some((v) => {
