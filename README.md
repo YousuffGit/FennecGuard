@@ -29,11 +29,19 @@ FennecGuard employs dual-layer encryption, memory-hard key derivation, explicit 
 
 ---
 
-## Known Limitations
-- **Managed Memory String Immutability:** While all raw encryption keys (byte[]) and cryptographic buffers are pinned and scrubbed with zeroes using CryptographicOperations.ZeroMemory, higher-level UI controls (PasswordBox.Password, clipboard string copies, and JSON serializers) allocate immutable System.String objects in the managed .NET heap. These strings cannot be manually scrubbed in-place and persist until reclaimed by the .NET Garbage Collector.
-- **Compromised Host OS (Malware / Keyloggers):** FennecGuard is designed to protect credentials at rest on disk and against network attackers. However, if the local operating system is compromised with kernel-level malware, rootkits, or debuggers attached to PasswordManager.Desktop.exe, an attacker with administrative privileges can inspect process virtual memory while the vault is in an unlocked state.
-- **Local Loopback Boundary:** The desktop IPC server binds exclusively to 127.0.0.1 and rejects all incoming requests containing web origins (http://, https://) to prevent Cross-Site Request Forgery (CSRF). However, any malicious third-party program running locally on your computer under the same user account could send local HTTP requests pretending to be the extension.
-- **Clipboard Monitoring:** Copied passwords automatically purge after 30 seconds. However, third-party utilities or background software with clipboard-monitoring permissions can capture plaintext credentials during that 30-second window.
-- **Single-Factor Authentication:** Vault decryption relies solely on the Master Password and Argon2id. Hardware security keys (FIDO2/WebAuthn) and multi-factor authentication are currently not implemented for local vault unlock.
+## Known Security Limitations
+
+FennecGuard is engineered around zero-knowledge principles, but like all production software, operates under realistic environmental constraints:
+
+1. **Managed String Immutability (.NET Runtime Boundary):**
+   While raw encryption keys and cryptographic buffers are pinned and scrubbed with zeroes using `CryptographicOperations.ZeroMemory`, higher-level UI controls (`PasswordBox.Password`, clipboard string copies, and JSON serializers) allocate immutable `System.String` objects on the managed .NET heap. These strings cannot be manually zeroed in-place and persist until reclaimed by the .NET Garbage Collector. (Microsoft officially deprecated `SecureString` for general development).
+2. **OS Swapfile Hardening (`VirtualLock`):**
+   To mitigate memory dumping via hibernation files or paging, FennecGuard pins the master key in physical RAM using `GC.AllocateArray(pinned: true)` and calls the Win32 kernel API `VirtualLock` to prevent the Windows kernel from paging the key address to `pagefile.sys` or `hiberfil.sys`.
+3. **Local Loopback Boundary (Token-Authenticated):**
+   The desktop IPC bridge binds strictly to `127.0.0.1` and requires a 256-bit cryptographic shared secret token (`X-FennecGuard-Auth`) stored privately in the extension's folder. All requests containing public web origins (`http://`, `https://`) are rejected with `403 Forbidden` to prevent Cross-Site Request Forgery (CSRF). However, any malicious software running locally *under the same user account* on Windows could inspect local files or simulate headers if the operating system account is already compromised.
+4. **Anti-DoS & Rate Limiting:**
+   The local API enforces a 64 KB payload ceiling to prevent memory exhaustion attacks, and locks `/unlock` for 30 seconds after 5 consecutive failed attempts to mitigate brute-force attempts.
+5. **Single-Factor Authentication:**
+   Vault decryption relies on the Master Password and Argon2id. Hardware security keys (FIDO2 / WebAuthn) are not currently implemented for local database decryption.
 
 ---
