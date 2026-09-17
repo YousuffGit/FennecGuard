@@ -4,6 +4,7 @@
   let hasAutoFilled = false;
   let bufferedUsername = "";
   let bufferedPassword = "";
+  let observer: MutationObserver | null = null;
 
   interface VaultItemHeader {
     id: string;
@@ -12,8 +13,25 @@
     websiteUrl: string;
   }
 
+  // Safety check: returns false if extension was reloaded in chrome://extensions
+  function isContextValid(): boolean {
+    return typeof chrome !== "undefined" && !!chrome.runtime && !!chrome.runtime.id;
+  }
+
+  // Cleanly disconnect when context invalidates
+  function teardownOnInvalidContext(): void {
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+  }
+
   // Listen for manual Autofill commands from popup
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (!isContextValid()) {
+      teardownOnInvalidContext();
+      return;
+    }
     if (request.action === "AUTOFILL_FORM") {
       const { username, password } = request;
       const success = executeFormAutofill(username, password);
@@ -21,8 +39,9 @@
     }
   });
 
-  // Continuously buffer typed inputs
+  // Track credentials in real-time as user types
   document.addEventListener("input", (e) => {
+    if (!isContextValid()) return;
     if (e.target instanceof HTMLInputElement) {
       if (e.target.type === "password") {
         bufferedPassword = e.target.value;
@@ -34,8 +53,8 @@
     }
   }, true);
 
-  // Initialize immediately if DOM is ready, otherwise on DOMContentLoaded
   function init(): void {
+    if (!isContextValid()) return;
     scanFields();
     checkPendingSave();
   }
@@ -46,10 +65,18 @@
     init();
   }
 
-  const observer = new MutationObserver(() => scanFields());
+  observer = new MutationObserver(() => {
+    if (!isContextValid()) {
+      teardownOnInvalidContext();
+      return;
+    }
+    scanFields();
+  });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
   function scanFields(): void {
+    if (!isContextValid()) return;
+
     const passwordInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]'))
       .filter(isSecurelyVisible);
 
@@ -70,6 +97,8 @@
   }
 
   async function attemptAutomaticAutofill(): Promise<void> {
+    if (!isContextValid()) return;
+
     const currentDomain = window.location.hostname.replace("www.", "").toLowerCase();
     if (!currentDomain) return;
 
@@ -108,6 +137,8 @@
   }
 
   function injectInFieldBadge(input: HTMLInputElement): void {
+    if (!isContextValid()) return;
+
     const host = document.createElement("div");
     host.style.position = "absolute";
     host.style.zIndex = "2147483647";
@@ -219,6 +250,11 @@
 
     badge.addEventListener("click", async (e) => {
       e.stopPropagation();
+      if (!isContextValid()) {
+        showNote(dropdown, "Extension reloaded. Please refresh this page.");
+        return;
+      }
+
       if (dropdown.style.display === "flex") {
         dropdown.style.display = "none";
         return;
@@ -227,7 +263,6 @@
       dropdown.replaceChildren();
       const currentDomain = window.location.hostname.replace("www.", "").toLowerCase();
 
-      // Send cleanly defined endpoint to background
       const data = await sendToBackground("/logins");
 
       if (!data?.success) {
@@ -263,6 +298,7 @@
           itemEl.appendChild(user);
 
           itemEl.addEventListener("click", async () => {
+            if (!isContextValid()) return;
             const credData = await sendToBackground("/credential", "POST", { id: item.id });
             if (credData?.success && credData.credential) {
               executeFormAutofill(credData.credential.username, credData.credential.password, input);
@@ -290,7 +326,11 @@
     dropdown.style.display = "flex";
   }
 
+  // ================= Credential Capture & Save Prompt =================
+
   function saveCredentialCandidate(): void {
+    if (!isContextValid()) return;
+
     if (!bufferedPassword || bufferedPassword.length < 4) {
       const pField = document.querySelector<HTMLInputElement>('input[type="password"]');
       if (pField && pField.value) bufferedPassword = pField.value;
@@ -310,7 +350,11 @@
         timestamp: Date.now()
       };
 
-      chrome.storage.local.set({ [STORAGE_KEY]: candidate });
+      try {
+        chrome.storage.local.set({ [STORAGE_KEY]: candidate });
+      } catch {
+        // Context invalidated safely ignored
+      }
 
       setTimeout(() => {
         checkPendingSave();
@@ -342,37 +386,45 @@
   }, true);
 
   function checkPendingSave(): void {
-    chrome.storage.local.get(STORAGE_KEY, async (result) => {
-      const item = result?.[STORAGE_KEY];
-      if (!item) return;
+    if (!isContextValid()) return;
 
-      if (Date.now() - item.timestamp > 180000) {
-        chrome.storage.local.remove(STORAGE_KEY);
-        return;
-      }
+    try {
+      chrome.storage.local.get(STORAGE_KEY, async (result) => {
+        if (!isContextValid()) return;
 
-      const currentDomain = window.location.hostname.replace("www.", "").toLowerCase();
+        const item = result?.[STORAGE_KEY];
+        if (!item) return;
 
-      if (!isDomainMatch(currentDomain, item.domain) && !isDomainMatch(item.domain, currentDomain)) {
-        return;
-      }
-
-      const data = await sendToBackground("/logins");
-      if (data?.success && Array.isArray(data.items)) {
-        const exists = data.items.some((v: VaultItemHeader) => {
-          const u = (v.username || "").toLowerCase();
-          const w = (v.websiteUrl || "").toLowerCase();
-          return u === item.username.toLowerCase() && isDomainMatch(currentDomain, w);
-        });
-
-        if (exists) {
+        if (Date.now() - item.timestamp > 180000) {
           chrome.storage.local.remove(STORAGE_KEY);
           return;
         }
-      }
 
-      renderSavePrompt(item.domain, item.username, item.password);
-    });
+        const currentDomain = window.location.hostname.replace("www.", "").toLowerCase();
+
+        if (!isDomainMatch(currentDomain, item.domain) && !isDomainMatch(item.domain, currentDomain)) {
+          return;
+        }
+
+        const data = await sendToBackground("/logins");
+        if (data?.success && Array.isArray(data.items)) {
+          const exists = data.items.some((v: VaultItemHeader) => {
+            const u = (v.username || "").toLowerCase();
+            const w = (v.websiteUrl || "").toLowerCase();
+            return u === item.username.toLowerCase() && isDomainMatch(currentDomain, w);
+          });
+
+          if (exists) {
+            chrome.storage.local.remove(STORAGE_KEY);
+            return;
+          }
+        }
+
+        renderSavePrompt(item.domain, item.username, item.password);
+      });
+    } catch {
+      // Safe boundary for context invalidation
+    }
   }
 
   function renderSavePrompt(domain: string, username: string, password: string): void {
@@ -462,7 +514,9 @@
     cancelBtn.className = "btn btn-cancel";
     cancelBtn.textContent = "Never";
     cancelBtn.addEventListener("click", () => {
-      chrome.storage.local.remove(STORAGE_KEY);
+      try {
+        chrome.storage.local.remove(STORAGE_KEY);
+      } catch {}
       host.remove();
     });
 
@@ -477,7 +531,9 @@
         url: domain,
         password
       });
-      chrome.storage.local.remove(STORAGE_KEY);
+      try {
+        chrome.storage.local.remove(STORAGE_KEY);
+      } catch {}
       host.remove();
     });
 
@@ -578,21 +634,20 @@
 
   function sendToBackground(endpoint: string, method: string = "GET", body?: any): Promise<any> {
     return new Promise((resolve) => {
+      if (!isContextValid()) {
+        resolve({ success: false, error: "Extension reloaded. Refresh page." });
+        return;
+      }
       try {
         chrome.runtime.sendMessage({ target: "API", endpoint, method, body }, (response) => {
           if (chrome.runtime.lastError) {
-            const errMsg = chrome.runtime.lastError.message || "";
-            if (errMsg.includes("context invalidated")) {
-              resolve({ success: false, error: "Extension updated. Please refresh this page (F5)." });
-            } else {
-              resolve({ success: false, error: "Desktop app not connected." });
-            }
+            resolve({ success: false, error: chrome.runtime.lastError.message });
             return;
           }
-          resolve(response || { success: false, error: "No response from extension service." });
+          resolve(response || { success: false, error: "No response from extension" });
         });
-      } catch {
-        resolve({ success: false, error: "Extension disconnected." });
+      } catch (err: any) {
+        resolve({ success: false, error: err?.message || "Extension context invalidated" });
       }
     });
   }
