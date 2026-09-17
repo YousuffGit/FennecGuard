@@ -19,7 +19,6 @@ namespace PasswordManager.Desktop;
 
 public partial class MainWindow : FluentWindow
 {
-    // Win32 API: VirtualLock locks memory pages into physical RAM, preventing OS swapfile writes
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool VirtualLock(IntPtr lpAddress, UIntPtr dwSize);
 
@@ -130,6 +129,22 @@ public partial class MainWindow : FluentWindow
             };
 
             await _dbService.AddItemAsync(newItem);
+            await Dispatcher.InvokeAsync(RefreshVaultListAsync);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> DeleteCredentialFromIpcAsync(string id)
+    {
+        if (_dbService == null || _derivedMasterKey == null || string.IsNullOrWhiteSpace(id)) return false;
+
+        try
+        {
+            await _dbService.DeleteItemAsync(id);
             await Dispatcher.InvokeAsync(RefreshVaultListAsync);
             return true;
         }
@@ -429,6 +444,26 @@ public partial class MainWindow : FluentWindow
         await RefreshVaultListAsync();
     }
 
+    private async void OnDeleteCredentialClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.Tag is VaultItem item && _dbService != null)
+        {
+            _autoLockService.RecordActivity();
+
+            var result = System.Windows.MessageBox.Show(
+                $"Are you sure you want to permanently delete the login for '{item.Title}' ({item.Username})?",
+                "Confirm Deletion",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question);
+
+            if (result == System.Windows.MessageBoxResult.Yes)
+            {
+                await _dbService.DeleteItemAsync(item.Id);
+                await RefreshVaultListAsync();
+            }
+        }
+    }
+
     private void OnCopyPasswordClicked(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement element && element.Tag is VaultItem item && _derivedMasterKey != null)
@@ -680,7 +715,6 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    // Pinned memory allocation and OS-level VirtualLock against pagefile writes
     private void SetMasterKey(byte[] newKey)
     {
         WipeSessionMemory();
@@ -689,7 +723,6 @@ public partial class MainWindow : FluentWindow
         Buffer.BlockCopy(newKey, 0, _derivedMasterKey, 0, newKey.Length);
         CryptographicOperations.ZeroMemory(newKey);
 
-        // Pin memory address in Win32 working set so Windows never pages it to disk
         _pinnedHandle = GCHandle.Alloc(_derivedMasterKey, GCHandleType.Pinned);
         VirtualLock(_pinnedHandle.AddrOfPinnedObject(), (UIntPtr)_derivedMasterKey.Length);
     }

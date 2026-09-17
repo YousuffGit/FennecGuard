@@ -12,9 +12,8 @@ public class LocalServerService
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private const int Port = 41893;
-    private const long MaxPayloadBytes = 64 * 1024; // 64 KB DoS protection ceiling
+    private const long MaxPayloadBytes = 64 * 1024;
 
-    // Rate limiting state for /unlock
     private int _failedAttempts = 0;
     private DateTime _lockoutUntil = DateTime.MinValue;
 
@@ -83,7 +82,6 @@ public class LocalServerService
 
         string? origin = req.Headers["Origin"];
 
-        // Anti-CSRF: Reject external public web pages
         if (!string.IsNullOrEmpty(origin) && 
             (origin.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
              origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
@@ -104,7 +102,6 @@ public class LocalServerService
             return;
         }
 
-        // DoS Protection: Reject payloads larger than 64 KB
         if (req.ContentLength64 > MaxPayloadBytes)
         {
             res.StatusCode = (int)HttpStatusCode.RequestEntityTooLarge;
@@ -112,7 +109,6 @@ public class LocalServerService
             return;
         }
 
-        // Validate Shared Secret Authentication Token (Constant-time check)
         string? incomingToken = req.Headers["X-FennecGuard-Auth"];
         byte[] incomingBytes = Encoding.UTF8.GetBytes(incomingToken ?? "");
 
@@ -146,7 +142,6 @@ public class LocalServerService
             }
             else if (req.HttpMethod == "POST" && path == "/unlock")
             {
-                // Rate Limiting Check: 5 attempts triggers 30s cooldown
                 if (DateTime.UtcNow < _lockoutUntil)
                 {
                     int secondsLeft = (int)(_lockoutUntil - DateTime.UtcNow).TotalSeconds;
@@ -229,6 +224,23 @@ public class LocalServerService
 
                     bool saved = await _window.SaveCredentialFromIpcAsync(title, username, url, password);
                     responseJson = JsonSerializer.Serialize(new { success = saved }, JsonOptions);
+                }
+            }
+            else if (req.HttpMethod == "POST" && path == "/delete")
+            {
+                if (!_window.IsVaultUnlocked)
+                {
+                    responseJson = JsonSerializer.Serialize(new { success = false, error = "Vault locked" }, JsonOptions);
+                }
+                else
+                {
+                    using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
+                    string body = await reader.ReadToEndAsync();
+                    using var doc = JsonDocument.Parse(body);
+                    string id = doc.RootElement.GetProperty("id").GetString() ?? "";
+
+                    bool deleted = await _window.DeleteCredentialFromIpcAsync(id);
+                    responseJson = JsonSerializer.Serialize(new { success = deleted }, JsonOptions);
                 }
             }
         }

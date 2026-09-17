@@ -165,8 +165,22 @@
                         });
                     }
                 });
+                // Delete Button with confirmation
+                const deleteBtn = document.createElement("button");
+                deleteBtn.className = "action-btn delete-btn";
+                deleteBtn.title = "Delete login";
+                deleteBtn.textContent = "✕";
+                deleteBtn.addEventListener("click", async () => {
+                    if (confirm(`Are you sure you want to permanently delete '${item.title}' (${item.username})?`)) {
+                        const delRes = await popupApiCall("/delete", "POST", { id: item.id });
+                        if (delRes?.success) {
+                            await loadLogins();
+                        }
+                    }
+                });
                 actions.appendChild(copyBtn);
                 actions.appendChild(fillBtn);
+                actions.appendChild(deleteBtn);
                 card.appendChild(info);
                 card.appendChild(actions);
                 credentialsList.appendChild(card);

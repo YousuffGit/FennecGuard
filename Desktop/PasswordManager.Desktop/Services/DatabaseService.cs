@@ -23,7 +23,6 @@ public class DatabaseService
         _connectionString = builder.ConnectionString;
     }
 
-    // Ensures the encrypted database table schema is initialized
     public async Task InitializeDatabaseAsync()
     {
         await using var connection = new SqliteConnection(_connectionString);
@@ -46,7 +45,6 @@ public class DatabaseService
         await command.ExecuteNonQueryAsync();
     }
 
-    // Fetches all vault records ordered by title
     public async Task<List<VaultItem>> GetAllAsync()
     {
         var items = new List<VaultItem>();
@@ -76,7 +74,6 @@ public class DatabaseService
         return items;
     }
 
-    // Persists a new encrypted credential
     public async Task AddItemAsync(VaultItem item)
     {
         await using var connection = new SqliteConnection(_connectionString);
@@ -100,7 +97,19 @@ public class DatabaseService
         await command.ExecuteNonQueryAsync();
     }
 
-    // Executes PRAGMA rekey on disk and writes re-encrypted payloads atomically
+    // Parameterized SQL deletion
+    public async Task DeleteItemAsync(string id)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        string sql = "DELETE FROM VaultItems WHERE Id = $id;";
+        await using var command = new SqliteCommand(sql, connection);
+        command.Parameters.AddWithValue("$id", id);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
     public async Task ReencryptAllItemsAsync(List<VaultItem> reencryptedItems, string newMasterPassword)
     {
         await using (var connection = new SqliteConnection(_connectionString))

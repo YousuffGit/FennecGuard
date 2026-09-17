@@ -54,7 +54,7 @@ body {
   gap: 8px;
 }
 
-.logo { font-size: 18px; }
+.logo-img { width: 20px; height: 20px; object-fit: contain; }
 .title { font-weight: 600; font-size: 15px; }
 
 .header-actions {
@@ -161,13 +161,13 @@ input:focus { border-color: var(--accent); }
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-width: 190px;
+  max-width: 180px;
 }
 
 .credential-title { font-size: 13px; font-weight: 600; }
 .credential-user { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.credential-actions { display: flex; gap: 6px; }
+.credential-actions { display: flex; gap: 5px; align-items: center; }
 
 .action-btn {
   padding: 5px 9px;
@@ -188,6 +188,19 @@ input:focus { border-color: var(--accent); }
   background-color: transparent;
   border: 1px solid var(--border);
   color: var(--text-primary);
+}
+
+.delete-btn {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 5px 6px;
+  font-size: 11px;
+}
+.delete-btn:hover {
+  background-color: rgba(209, 52, 56, 0.15);
+  border-color: var(--error);
+  color: var(--error);
 }
 
 .empty-state {
