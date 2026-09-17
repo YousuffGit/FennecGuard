@@ -7,11 +7,11 @@ namespace PasswordManager.Desktop.Services;
 public class CryptoService
 {
     public const int KeySizeInBytes = 32;   // 256 bits for AES-256
-    public const int NonceSizeInBytes = 12; // 96 bits standard for AES-GCM
+    public const int NonceSizeInBytes = 12; // 96 bits for AES-GCM
     public const int TagSizeInBytes = 16;   // 128-bit authentication tag
-    public const int SaltSizeInBytes = 16;  // 128-bit cryptographic salt
+    public const int SaltSizeInBytes = 16;  // 128-bit salt
 
-    // Derives a 256-bit symmetric encryption key from a password and salt using Argon2id.
+    // Derives a 256-bit symmetric encryption key using Argon2id
     public async Task<byte[]> DeriveKeyAsync(string password, byte[] salt)
     {
         byte[] passwordBytes = Encoding.UTF8.GetBytes(password);
@@ -21,7 +21,7 @@ public class CryptoService
             {
                 Salt = salt,
                 DegreeOfParallelism = 4,
-                MemorySize = 65536, // 64 MB memory footprint
+                MemorySize = 65536, // 64 MB RAM
                 Iterations = 3
             };
 
@@ -29,12 +29,11 @@ public class CryptoService
         }
         finally
         {
-            // Wipe sensitive password bytes immediately after derivation
             CryptographicOperations.ZeroMemory(passwordBytes);
         }
     }
 
-    // Encrypts plaintext using AES-256-GCM and generates a unique nonce and authentication tag.
+    // Encrypts plaintext using AES-256-GCM
     public (string CiphertextBase64, string NonceBase64, string TagBase64) Encrypt(string plaintext, byte[] key)
     {
         byte[] plaintextBytes = Encoding.UTF8.GetBytes(plaintext);
@@ -59,12 +58,11 @@ public class CryptoService
         }
         finally
         {
-            // Clean plaintext memory
             CryptographicOperations.ZeroMemory(plaintextBytes);
         }
     }
 
-    // Decrypts an authenticated ciphertext payload and verifies the tag.
+    // Decrypts ciphertext and verifies the authentication tag
     public string Decrypt(string ciphertextBase64, string nonceBase64, string tagBase64, byte[] key)
     {
         byte[] ciphertext = Convert.FromBase64String(ciphertextBase64);
@@ -83,7 +81,6 @@ public class CryptoService
         }
         finally
         {
-            // Clean decrypted payload buffer from memory
             CryptographicOperations.ZeroMemory(decryptedBytes);
         }
     }
