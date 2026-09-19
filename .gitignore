@@ -1,9 +1,10 @@
-﻿## Build & IDE Artifacts
+﻿## Build & Compilation Output
 .vs/
 [Bb]in/
 [Oo]bj/
 *.user
 *.suo
+Release/
 
 ## Local Vault & Security Files
 *.db
@@ -11,7 +12,10 @@
 *.db-shm
 *.salt
 settings.json
+token.json
+Desktop/**/token.json
+Extension/token.json
 
-## Node.js & Extension Build
+## Node.js & Extension Build Artifacts
 node_modules/
 Extension/dist/

@@ -28,34 +28,54 @@ public class LocalServerService
     {
         _window = window;
 
-        string tokenFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "token.json");
+        // Locate token.json: checks Process directory (for single-file exe) and BaseDirectory
+        string exeDir = Path.GetDirectoryName(Environment.ProcessPath) ?? "";
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+        string path1 = Path.Combine(exeDir, "token.json");
+        string path2 = Path.Combine(baseDir, "token.json");
+
+        string targetFile = File.Exists(path1) ? path1 : path2;
         string token = "";
-        if (File.Exists(tokenFile))
+
+        if (File.Exists(targetFile))
         {
             try
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(tokenFile));
+                using var doc = JsonDocument.Parse(File.ReadAllText(targetFile));
                 token = doc.RootElement.GetProperty("token").GetString() ?? "";
             }
             catch {}
         }
+
         _expectedTokenBytes = Encoding.UTF8.GetBytes(token);
     }
 
     public void Start()
     {
-        _cts = new CancellationTokenSource();
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
-        _listener.Start();
+        try
+        {
+            _cts = new CancellationTokenSource();
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
+            _listener.Start();
 
-        Task.Run(() => ListenLoopAsync(_cts.Token));
+            Task.Run(() => ListenLoopAsync(_cts.Token));
+        }
+        catch
+        {
+            // Port already bound or unavailable
+        }
     }
 
     public void Stop()
     {
         _cts?.Cancel();
-        _listener?.Stop();
+        try
+        {
+            _listener?.Stop();
+        }
+        catch {}
         _listener = null;
     }
 
@@ -82,6 +102,7 @@ public class LocalServerService
 
         string? origin = req.Headers["Origin"];
 
+        // Anti-CSRF: Reject external public web pages
         if (!string.IsNullOrEmpty(origin) && 
             (origin.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
              origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))

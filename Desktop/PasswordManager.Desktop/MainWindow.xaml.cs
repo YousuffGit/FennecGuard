@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
 using PasswordManager.Desktop.Models;
@@ -27,7 +28,7 @@ public partial class MainWindow : FluentWindow
 
     private readonly CryptoService _cryptoService = new();
     private DatabaseService? _dbService;
-    private byte[]? _derivedMasterKey; // Pinned memory buffer
+    private byte[]? _derivedMasterKey;
     private GCHandle _pinnedHandle;
 
     private readonly ClipboardService _clipboardService;
@@ -38,8 +39,10 @@ public partial class MainWindow : FluentWindow
     private AppSettings _settings;
     private bool _isExplicitExit;
 
-    private readonly string _saltFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.salt");
-    private readonly string _dbFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "vault.db");
+    // Use actual disk directory of FennecGuard.exe rather than virtual temp folder
+    private static readonly string AppDir = Path.GetDirectoryName(Environment.ProcessPath) ?? AppDomain.CurrentDomain.BaseDirectory;
+    private readonly string _saltFilePath = Path.Combine(AppDir, "vault.salt");
+    private readonly string _dbFilePath = Path.Combine(AppDir, "vault.db");
 
     private static readonly SolidColorBrush SuccessBrush = new(Color.FromRgb(16, 124, 65));
     private static readonly SolidColorBrush ErrorBrush = new(Color.FromRgb(209, 52, 56));
@@ -63,6 +66,16 @@ public partial class MainWindow : FluentWindow
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            var iconStream = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/logo.ico"));
+            if (iconStream != null)
+            {
+                Icon = BitmapFrame.Create(iconStream.Stream);
+            }
+        }
+        catch {}
+
         ApplyConfiguredTheme();
 
         MinimizeToTraySwitch.IsChecked = _settings.MinimizeToTray;
@@ -107,8 +120,6 @@ public partial class MainWindow : FluentWindow
         WipeSessionMemory();
         base.OnClosed(e);
     }
-
-    // ================= Extension Bridge Handlers =================
 
     public async Task<bool> SaveCredentialFromIpcAsync(string title, string username, string url, string password)
     {
@@ -221,8 +232,6 @@ public partial class MainWindow : FluentWindow
             password = decrypted
         };
     }
-
-    // ================= UI Actions =================
 
     private void RestoreFromTray()
     {

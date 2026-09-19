@@ -3,7 +3,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="FennecGuard" 
-        Icon="Assets/logo.ico"
         Height="740" 
         Width="1020"
         WindowBackdropType="None"
@@ -15,18 +14,20 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- TitleBar with Logo -->
         <Grid Grid.Row="0">
             <ui:TitleBar Title="" />
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False">
-                <Image Source="Assets/logo.ico" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                <Image Source="pack://application:,,,/Assets/logo.ico" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
                 <TextBlock Text="FennecGuard" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
+        <!-- Setup Panel -->
         <Border x:Name="SetupPanel" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
             <ui:Card Width="440" Padding="28">
                 <StackPanel>
-                    <Image Source="Assets/logo.ico" Width="48" Height="48" Margin="0,0,0,16" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Image Source="pack://application:,,,/Assets/logo.ico" Width="48" Height="48" Margin="0,0,0,16" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
                     <ui:TextBlock Text="Welcome to FennecGuard" FontTypography="Title" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
                     <ui:TextBlock Text="Create a master password to initialize your vault." Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,24" />
 
@@ -42,9 +43,10 @@
             </ui:Card>
         </Border>
 
+        <!-- Unlock Panel -->
         <Grid x:Name="UnlockPanel" Grid.Row="1" Visibility="Visible" Margin="18">
             <StackPanel VerticalAlignment="Center">
-                <Image Source="Assets/logo.ico" Width="36" Height="36" Margin="0,0,0,10" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                <Image Source="pack://application:,,,/Assets/logo.ico" Width="36" Height="36" Margin="0,0,0,10" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
                 <ui:TextBlock Text="FennecGuard" FontTypography="Subtitle" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,2" />
                 <ui:TextBlock Text="Vault locked" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,14" />
 
@@ -55,6 +57,7 @@
             </StackPanel>
         </Grid>
 
+        <!-- Vault Dashboard -->
         <Grid x:Name="VaultPanel" Grid.Row="1" Visibility="Collapsed" Margin="24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -95,7 +98,6 @@
                                             </StackPanel>
                                         </StackPanel>
 
-                                        <!-- Copy and Delete Action Buttons -->
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <ui:Button Style="{StaticResource SecondaryActionButtonStyle}" Content="Copy Password" Click="OnCopyPasswordClicked" Tag="{Binding}" Margin="0,0,8,0" />
                                             <ui:Button Style="{StaticResource DangerActionButtonStyle}" Content="Delete" Click="OnDeleteCredentialClicked" Tag="{Binding}" />
@@ -131,6 +133,7 @@
             </ui:Card>
         </Grid>
 
+        <!-- Settings Panel -->
         <Grid x:Name="SettingsPanel" Grid.Row="1" Visibility="Collapsed" Margin="24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -243,6 +246,7 @@
             </ScrollViewer>
         </Grid>
 
+        <!-- Copy Notification Modal -->
         <Grid x:Name="CopyNotificationOverlay" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed" Background="#66000000">
             <ui:Card Width="400" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel>

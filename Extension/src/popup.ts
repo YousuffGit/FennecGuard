@@ -25,6 +25,7 @@
     const lockedView = document.getElementById("locked-view") as HTMLElement;
     const unlockedView = document.getElementById("unlocked-view") as HTMLElement;
     const disconnectedView = document.getElementById("disconnected-view") as HTMLElement;
+    const disconnectedReason = document.getElementById("disconnected-reason") as HTMLElement;
     const masterPasswordInput = document.getElementById("master-password-input") as HTMLInputElement;
     const unlockBtn = document.getElementById("unlock-btn") as HTMLButtonElement;
     const unlockError = document.getElementById("unlock-error") as HTMLElement;
@@ -60,6 +61,13 @@
     async function checkStatus(): Promise<void> {
       const res = await popupApiCall("/status");
       if (!res || !res.success) {
+        if (disconnectedReason) {
+          if (res?.error === "Unauthorized token") {
+            disconnectedReason.textContent = "Token mismatch: Click 'Reload' on FennecGuard in chrome://extensions";
+          } else {
+            disconnectedReason.textContent = "FennecGuard desktop client is closed or not responding.";
+          }
+        }
         showView("disconnected");
         return;
       }
@@ -185,7 +193,6 @@
           }
         });
 
-        // Delete Button with confirmation
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "action-btn delete-btn";
         deleteBtn.title = "Delete login";
@@ -226,7 +233,7 @@
         showView("unlocked");
         await loadLogins();
       } else {
-        unlockError.textContent = "Incorrect master password.";
+        unlockError.textContent = res?.error || "Incorrect master password.";
       }
     });
 
