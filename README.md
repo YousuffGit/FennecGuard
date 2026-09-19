@@ -1,4 +1,3 @@
-@'
 # FennecGuard
 
 A fast, lightweight, and zero-knowledge desktop password manager and browser extension built with .NET, WPF Windows 11 Fluent Design, and TypeScript.
@@ -50,7 +49,7 @@ FennecGuard employs dual-layer authenticated encryption, memory-hard key derivat
 
 ---
 
-## Threat Model & Security Boundaries
+## Known Security Limitations
 
 FennecGuard is engineered around zero-knowledge principles, but like all production software, operates under realistic environmental constraints:
 
